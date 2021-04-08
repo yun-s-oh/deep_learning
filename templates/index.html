@@ -1,0 +1,18 @@
+<!doctype html>
+  <head>
+    <title>Upload New File</title>
+  </head>
+  <body>
+    {% if get_flashed_messages() %}
+    <header>
+        <div class="alert alert-primary border text-center" role="alert">
+            {{ get_flashed_messages() | join(" ") }}
+        </div>
+    </header>
+    {% endif %}
+  <h1>Upload new File</h1>
+  <form method=post enctype=multipart/form-data>
+    <input type=file name=file>
+    <input type=submit value=Upload>
+  </body>
+</form>
