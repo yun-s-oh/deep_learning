@@ -1,2 +1,5 @@
 Flask==1.1.2
 flask_session
+face_recognition
+Pillow
+pip install cmake
