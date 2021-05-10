@@ -4,7 +4,56 @@ import os
 import shutil
 from shutil import copy
 from PIL import Image, ImageTk
+import tensorflow as tf
+from object_detection.utils import label_map_util
+from object_detection.utils import visualization_utils as viz_utils
+from categories import *
+import numpy as np
+from collections import Counter
+import matplotlib.pyplot as plt
 
+age_cat = ['0-2',
+ '4-6',
+ '8-12',
+ '15-20',
+ '25-32',
+ '38-43',
+ '48-53',
+ '60-100']
+
+gender_cat = ['Female', 'Male', 'Infant']
+
+age_total = dict(zip(age_cat, [0] * len(age_cat)))
+gender_total = dict(zip(gender_cat, [0] * len(gender_cat)))
+total = 0
+# Enable GPU dynamic memory allocation
+gpus = tf.config.experimental.list_physical_devices('GPU')
+for gpu in gpus:
+    tf.config.experimental.set_memory_growth(gpu, True)
+
+model1 = tf.saved_model.load(os.path.join("models","faster_rcnn"))
+category_index = label_map_util.create_category_index_from_labelmap(
+    os.path.join("models", "label_map.pbtxt"),
+    use_display_name=True)
+detect_fn = model1.signatures['serving_default']
+
+model2 = tf.keras.models.load_model(os.path.join('models','facenet'))
+
+def load_image_into_numpy_array(path):
+    """Load an image from file into a numpy array.
+
+    Puts image into numpy array to feed into tensorflow graph.
+    Note that by convention we put it into a numpy array with shape
+    (height, width, channels), where channels=3 for RGB.
+
+    Args:
+      path: the file path to the image
+
+    Returns:
+      uint8 numpy array with shape (img_height, img_width, 3)
+    """
+    np_img = np.array(Image.open(path))
+    return np_img
 
 # Custom Methods
 # Create new folder "face_folder" to store uploaded images
@@ -27,48 +76,166 @@ def upload_clicked():
 
 # Process selected file to display image and name
 def process_selected():
+    global img
+    global feed
+    global age_cat
+    global gender_cat
     file = fileList.get(fileList.curselection())
-    fileName.config(text=file)
-
-    global img, feed
-    path = os.getcwd() + '\\face_folder\\' + file
-    image = Image.open(path)
+    fileName.config(text=file)    
+    path = os.path.join(os.getcwd(), 'face_folder', file)
+    detections, image = process_image(path)
+    bounding_boxes = detections['detection_boxes'][detections['detection_scores'] > 0.5]
+    image = Image.fromarray(image)
     image.thumbnail((480, 280), Image.ANTIALIAS)
     img = ImageTk.PhotoImage(image)
     feed = Label(GUI, image=img)
     feed.grid(column=0, row=1, columnspan=4, rowspan=4)
-
+    image = Image.open(path)
+    width, height = image.size
+    facelist = []
+    for i, img_box in enumerate(bounding_boxes):
+        (ymin, xmin, ymax, xmax) = (img_box[0] * height, img_box[1] * width, img_box[2] * height, img_box[3] * width)
+        crop_img =  np.asarray(image.crop((max(int(xmin)-3,0), max(int(ymin)-3,0), min(int(xmax)+3,width), min(int(ymax)+3,height))).resize((160,160))) / 255.0
+        facelist.append(crop_img)
+    if facelist:
+        face_np = np.array(facelist)
+        prediction = model2.predict(face_np)
+        age_pred = [age_cat[x] for x in np.argmax(prediction[0],axis=-1)]
+        gender_pred = [gender_cat[x] for x in np.argmax(prediction[1],axis=-1)]
+        update_live_feed(age_pred, gender_pred)
+        update_total_feed(age_pred, gender_pred)
     # need to implement video
     # need to also run it through the model, then save the output to a local directory
-
+    
 
 # Delete selected file
 def delete_selected():
     file = fileList.get(fileList.curselection())
     index = fileList.get(0, END).index(file)
     fileList.delete(index)
-    os.remove(os.getcwd() + '\\face_folder\\' + file)
+    os.remove(os.path.join('face_folder',  file))
+
+# function to show file when clicked
+def show_image(event):
+    global feed
+    global img
+    w = event.widget
+    index = int(w.curselection()[0])
+    value = w.get(index)
+    fileName.config(text=value)
+    path = os.path.join('face_folder', value)
+    image  = Image.open(path)
+    image.thumbnail((480, 280), Image.ANTIALIAS)
+    img = ImageTk.PhotoImage(image)
+    feed.pack_forget()
+    feed = Label(GUI, image=img)
+    feed.image = img
+    feed.grid(column=0, row=1, columnspan=4, rowspan=4)
 
 
 # function that updates the age pie chart
+def create_age_chart(age_pred):
+    global pieAge
+    global pieimg
+    pieAge.delete('all')
+    age_pred  = ['a','b','c','a']
+    age_dict =  {key: value/len(age_pred) for key, value in Counter(age_pred).items()}
+    fig = plt.figure(figsize = [6,6])
+    labels = age_dict.keys()
+    sizes = age_dict.values()
+    plt.pie(sizes, labels=labels, autopct='%1.1f%%',
+            shadow=True, startangle=90)
+    fig.canvas.draw()
+    img = Image.frombytes('RGB', fig.canvas.get_width_height(),fig.canvas.tostring_rgb())
+    image.thumbnail((240, 240), Image.ANTIALIAS)
+    pieimg = ImageTk.PhotoImage(image)
+    pieAge.pack_forget()
+    pieAge = Label(GUI, image=pieimg)
+    pieAge.image = pieimg
 # function that updates the gender pie chart
 # function to export to csv
 # function for suggested ads
 # function for updating live feed
+def update_live_feed(age_pred, gender_pred):
+    global liveFeed
+    liveFeed.delete('1.0', END)
+    liveFeed.config(state=NORMAL)
+    liveFeed.insert(END, f"Faces detected: {len(age_pred)}" + "\n")
+    for age, gender in zip (age_pred, gender_pred):
+        liveFeed.insert(END, "\n" + f"{gender}: {age}")
+    
 # function for updating total feed
+def update_total_feed(age_pred, gender_pred):
+    global totalFeed
+    global age_total
+    global gender_total
+    global total
+    totalFeed.delete('1.0', END)
+    totalFeed.config(state=NORMAL)
+    total += len(age_pred)
+    for age, gender in zip (age_pred, gender_pred):
+        age_total[age] += 1
+        gender_total[gender] += 1
+    totalFeed.insert(END, f"Total people: {total}" + "\n")
+    for key, value in gender_total.items():
+        if value != 0: totalFeed.insert(END, "\n" + f"{key}: {value}") 
+    totalFeed.insert(END, "\n")
+    for key, value in age_total.items():
+        if value != 0: totalFeed.insert(END, "\n" + f"Age {key}: {value}") 
+
 # function for classification box
+def process_image(image_path):
+    print('Running inference for {}... '.format(image_path), end='')
+
+    global detect_fn
+    image_np = load_image_into_numpy_array(image_path)
+    # The input needs to be a tensor, convert it using `tf.convert_to_tensor`.
+    input_tensor = tf.convert_to_tensor(image_np)
+    # The model expects a batch of images, so add an axis with `tf.newaxis`.
+    input_tensor = input_tensor[tf.newaxis, ...]
+
+    detections = detect_fn(input_tensor)
+    # All outputs are batches tensors.
+    # Convert to numpy arrays, and take index [0] to remove the batch dimension.
+    # We're only interested in the first num_detections.
+    num_detections = int(detections.pop('num_detections'))
+    detections = {key: value[0, :num_detections].numpy()
+                  for key, value in detections.items()}
+    detections['num_detections'] = num_detections
+
+    # detection_classes should be ints.
+    detections['detection_classes'] = detections['detection_classes'].astype(np.int64)
+
+    image_np_with_detections = image_np.copy()
+
+    viz_utils.visualize_boxes_and_labels_on_image_array(
+          image_np_with_detections,
+          detections['detection_boxes'],
+          detections['detection_classes'],
+          detections['detection_scores'],
+          category_index,
+          use_normalized_coordinates=True,
+          max_boxes_to_draw=200,
+          min_score_thresh=.30,
+          agnostic_mode=False)
+    return detections, image_np_with_detections
 
 
 # Create a window
 start_up()
 GUI = Tk()
 GUI.title("Gender and Age Classification at Major Events for Valuable Demographic Trends and Statistics")
-GUI.geometry('661x758')
-GUI.resizable(False, False)
+width, height = GUI.winfo_screenwidth(), GUI.winfo_screenheight()
+GUI.geometry('%dx%d+0+0' % (width,height))
+GUI.resizable(True, True)
 
 # Image/Video feed
 fileName = Label(text="Current File", width=61, font=("Arial Bold", 10))
 blankFeed = Label(width=69, height=20)
+
+img = None
+feed = Label(GUI, image=img)
+feed.image = img
 # List of files
 fileLabel = Label(text="File List", width=20, font=("Arial Bold", 10))
 fileList = Listbox(GUI, height=16, width=27)
@@ -92,7 +259,8 @@ totalFeedScrollbar = Scrollbar(GUI)
 # Pie Chart of total results
 ageChartLabel = Label(text="Age Pie Chart", width=30, font=("Arial Bold", 10))
 genderChartLabel = Label(text="Gender Pie Chart", width=30, font=("Arial Bold", 10))
-pieAge = Canvas(GUI, height=240, width=240)
+pieAge = Canvas(GUI, height=240, width=240, image = img)
+# pieAge.image = img
 pieGender = Canvas(GUI, height=240, width=240)
 # Ad suggestion
 adLabel = Label(text="Ad Suggestions", width=20, font=("Arial Bold", 10))
@@ -182,19 +350,19 @@ totalFeed.insert(END, "\n" + "Age 15-20: 4")
 totalFeed.insert(END, "\n" + "Age 25-32: 14")
 totalFeed.insert(END, "\n" + "Age 38-43: 6")
 
-data = [['15-20', 0.17, 'yellow'], ['25-32', 0.58, 'green'], ['38-43', 0.25, 'purple']]
-p = 0
-for i in data:
-    angle = i[1] * 360
-    pieAge.create_arc(220, 220, 20, 20, start=p, extent=angle, fill=i[2])
-    p += angle
+# data = [['15-20', 0.17, 'yellow'], ['25-32', 0.58, 'green'], ['38-43', 0.25, 'purple']]
+# p = 0
+# for i in data:
+#     angle = i[1] * 360
+#     pieAge.create_arc(220, 220, 20, 20, start=p, extent=angle, fill=i[2])
+#     p += angle
 
-data = [['Male', 0.67, 'blue'], ['Female', 0.33, 'red']]
-p = 0
-for i in data:
-    angle = i[1] * 360
-    pieGender.create_arc(220, 220, 20, 20, start=p, extent=angle, fill=i[2])
-    p += angle
+# data = [['Male', 0.67, 'blue'], ['Female', 0.33, 'red']]
+# p = 0
+# for i in data:
+#     angle = i[1] * 360
+#     pieGender.create_arc(220, 220, 20, 20, start=p, extent=angle, fill=i[2])
+#     p += angle
 
 ad.insert(END, "Suggested Ads:" + "\n\n")
 ad.insert(END, "Sports" + "\n")
@@ -206,6 +374,8 @@ fileResults.insert(END, "Female: 25-32" + "\n")
 fileResults.insert(END, "Male: 25-32" + "\n")
 fileResults.insert(END, "Female: 25-32" + "\n")
 
+# event when clicking filenames
+fileList.bind("<<ListboxSelect>>", show_image)
 
 # Mainloop
 GUI.mainloop()
