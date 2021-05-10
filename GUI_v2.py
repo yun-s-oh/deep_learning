@@ -1,5 +1,6 @@
 from tkinter import *
 from tkinter import filedialog
+import cv2
 import os
 import shutil
 from shutil import copy
@@ -11,7 +12,8 @@ from categories import *
 import numpy as np
 from collections import Counter
 import matplotlib.pyplot as plt
-
+cap = cv2.VideoCapture(0)
+video_stop = True
 age_cat = ['0-2',
  '4-6',
  '8-12',
@@ -39,21 +41,6 @@ detect_fn = model1.signatures['serving_default']
 
 model2 = tf.keras.models.load_model(os.path.join('models','facenet'))
 
-def load_image_into_numpy_array(path):
-    """Load an image from file into a numpy array.
-
-    Puts image into numpy array to feed into tensorflow graph.
-    Note that by convention we put it into a numpy array with shape
-    (height, width, channels), where channels=3 for RGB.
-
-    Args:
-      path: the file path to the image
-
-    Returns:
-      uint8 numpy array with shape (img_height, img_width, 3)
-    """
-    np_img = np.array(Image.open(path))
-    return np_img
 
 # Custom Methods
 # Create new folder "face_folder" to store uploaded images
@@ -66,6 +53,8 @@ def start_up():
 
 # Upload image to face_folder
 def upload_clicked():
+    global video_stop
+    video_stop = True
     file = filedialog.askopenfilename(filetypes=(("files", "*.jpg"),
                                                  ("files", "*.png"),
                                                  ("files", "*.mp4")))
@@ -80,17 +69,109 @@ def process_selected():
     global feed
     global age_cat
     global gender_cat
+    global video_stop
+    feed.pack_forget()
+    feed.destroy()
+    index = int(fileList.curselection()[0])
+    if index > 0:
+        video_stop = True
+        file = fileList.get(fileList.curselection())
+        fileName.config(text=file)    
+        path = os.path.join(os.getcwd(), 'face_folder', file)
+        image_np = np.array(Image.open(path))
+        detections, image = process_image(image_np)
+        bounding_boxes = detections['detection_boxes'][detections['detection_scores'] > 0.5]
+        image = Image.fromarray(image)
+        image.thumbnail((480, 280), Image.ANTIALIAS)
+        img = ImageTk.PhotoImage(image)
+        feed = Label(GUI, image=img)
+        feed.grid(column=0, row=1, columnspan=4, rowspan=4)
+        image = Image.open(path)
+        width, height = image.size
+        facelist = []
+        for i, img_box in enumerate(bounding_boxes):
+            (ymin, xmin, ymax, xmax) = (img_box[0] * height, img_box[1] * width, img_box[2] * height, img_box[3] * width)
+            crop_img =  np.asarray(image.crop((max(int(xmin)-3,0), max(int(ymin)-3,0), min(int(xmax)+3,width), min(int(ymax)+3,height))).resize((160,160))) / 255.0
+            facelist.append(crop_img)
+        if facelist:
+            face_np = np.array(facelist)
+            prediction = model2.predict(face_np)
+            age_pred = [age_cat[x] for x in np.argmax(prediction[0],axis=-1)]
+            gender_pred = [gender_cat[x] for x in np.argmax(prediction[1],axis=-1)]
+            update_live_feed(age_pred, gender_pred)
+            update_total_feed(age_pred, gender_pred)
+    else:
+        video_stop = False
+        process_live_stream()
+
+    # need to implement video
+    # need to also run it through the model, then save the output to a local directory
+    
+
+# Delete selected file
+def delete_selected():
+    global video_stop
+    video_stop = True
     file = fileList.get(fileList.curselection())
-    fileName.config(text=file)    
-    path = os.path.join(os.getcwd(), 'face_folder', file)
-    detections, image = process_image(path)
+    index = fileList.get(0, END).index(file)
+    if index > 0:
+        fileList.delete(index)
+        os.remove(os.path.join('face_folder',  file))
+
+# function to show file when clicked
+def show_image(event):
+    global feed
+    global img
+    global video_stop
+    feed.pack_forget()
+    w = event.widget
+    index = int(w.curselection()[0])
+    if index > 0:
+        video_stop = True
+        value = w.get(index)
+        fileName.config(text=value)
+        path = os.path.join('face_folder', value)
+        image  = Image.open(path)
+        image.thumbnail((480, 280), Image.ANTIALIAS)
+        img = ImageTk.PhotoImage(image)
+        feed = Label(GUI, image=img)
+        feed.image = img
+        feed.grid(column=0, row=1, columnspan=4, rowspan=4)
+    else:
+        video_stop = False
+        video_stream()
+
+# function that shows live video
+def video_stream():
+    global video_stop
+    # Capture frame-by-frame
+    ret, frame = cap.read()
+    # Our operations on the frame come here
+    cv2image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGBA)
+    image = Image.fromarray(cv2image)
+    image.thumbnail((480, 280), Image.ANTIALIAS)
+    img = ImageTk.PhotoImage(image=image)
+    feed.imgtk = img
+    feed.configure(image=img)
+    if video_stop: 
+        feed.pack_forget()
+    else: 
+        feed.after(1, video_stream)
+
+# function that processes live video
+def process_live_stream():
+    global video_stop
+    # Capture frame-by-frame
+    ret, frame = cap.read()
+    # Our operations on the frame come here
+    cv2image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    detections, image = process_image(cv2image)
     bounding_boxes = detections['detection_boxes'][detections['detection_scores'] > 0.5]
     image = Image.fromarray(image)
     image.thumbnail((480, 280), Image.ANTIALIAS)
     img = ImageTk.PhotoImage(image)
     feed = Label(GUI, image=img)
     feed.grid(column=0, row=1, columnspan=4, rowspan=4)
-    image = Image.open(path)
     width, height = image.size
     facelist = []
     for i, img_box in enumerate(bounding_boxes):
@@ -104,33 +185,17 @@ def process_selected():
         gender_pred = [gender_cat[x] for x in np.argmax(prediction[1],axis=-1)]
         update_live_feed(age_pred, gender_pred)
         update_total_feed(age_pred, gender_pred)
-    # need to implement video
-    # need to also run it through the model, then save the output to a local directory
-    
-
-# Delete selected file
-def delete_selected():
-    file = fileList.get(fileList.curselection())
-    index = fileList.get(0, END).index(file)
-    fileList.delete(index)
-    os.remove(os.path.join('face_folder',  file))
-
-# function to show file when clicked
-def show_image(event):
-    global feed
-    global img
-    w = event.widget
-    index = int(w.curselection()[0])
-    value = w.get(index)
-    fileName.config(text=value)
-    path = os.path.join('face_folder', value)
-    image  = Image.open(path)
     image.thumbnail((480, 280), Image.ANTIALIAS)
-    img = ImageTk.PhotoImage(image)
-    feed.pack_forget()
-    feed = Label(GUI, image=img)
-    feed.image = img
-    feed.grid(column=0, row=1, columnspan=4, rowspan=4)
+    img = ImageTk.PhotoImage(image=image)
+    feed.imgtk = img
+    feed.configure(image=img)
+    if video_stop: 
+        feed.pack_forget()
+    else: 
+        feed.after(10, process_live_stream)
+
+# function that predict bounding boxes, age and gender classificatoin
+
 
 
 # function that updates the age pie chart
@@ -138,7 +203,6 @@ def create_age_chart(age_pred):
     global pieAge
     global pieimg
     pieAge.delete('all')
-    age_pred  = ['a','b','c','a']
     age_dict =  {key: value/len(age_pred) for key, value in Counter(age_pred).items()}
     fig = plt.figure(figsize = [6,6])
     labels = age_dict.keys()
@@ -184,11 +248,8 @@ def update_total_feed(age_pred, gender_pred):
         if value != 0: totalFeed.insert(END, "\n" + f"Age {key}: {value}") 
 
 # function for classification box
-def process_image(image_path):
-    print('Running inference for {}... '.format(image_path), end='')
-
+def process_image(image_np):
     global detect_fn
-    image_np = load_image_into_numpy_array(image_path)
     # The input needs to be a tensor, convert it using `tf.convert_to_tensor`.
     input_tensor = tf.convert_to_tensor(image_np)
     # The model expects a batch of images, so add an axis with `tf.newaxis`.
@@ -374,6 +435,8 @@ fileResults.insert(END, "Female: 25-32" + "\n")
 fileResults.insert(END, "Male: 25-32" + "\n")
 fileResults.insert(END, "Female: 25-32" + "\n")
 
+
+fileList.insert(END, 'Live Streaming')
 # event when clicking filenames
 fileList.bind("<<ListboxSelect>>", show_image)
 
