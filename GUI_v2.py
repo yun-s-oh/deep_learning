@@ -13,7 +13,8 @@ import numpy as np
 from collections import Counter
 import matplotlib.pyplot as plt
 cap = cv2.VideoCapture(0)
-video_stop = True
+video_stop_processed = True
+video_stop_live = True
 age_cat = ['0-2',
  '4-6',
  '8-12',
@@ -53,8 +54,10 @@ def start_up():
 
 # Upload image to face_folder
 def upload_clicked():
-    global video_stop
-    video_stop = True
+    global video_stop_processed
+    global video_stop_live
+    video_stop_processed = True
+    video_stop_live = True
     file = filedialog.askopenfilename(filetypes=(("files", "*.jpg"),
                                                  ("files", "*.png"),
                                                  ("files", "*.mp4")))
@@ -69,23 +72,23 @@ def process_selected():
     global feed
     global age_cat
     global gender_cat
-    global video_stop
-    feed.pack_forget()
-    feed.destroy()
+    global video_stop_processed
+    global video_stop_live
     index = int(fileList.curselection()[0])
     if index > 0:
-        video_stop = True
+        video_stop_processed = True
+        video_stop_live = True
         file = fileList.get(fileList.curselection())
         fileName.config(text=file)    
         path = os.path.join(os.getcwd(), 'face_folder', file)
         image_np = np.array(Image.open(path))
         detections, image = process_image(image_np)
-        bounding_boxes = detections['detection_boxes'][detections['detection_scores'] > 0.5]
+        bounding_boxes = detections['detection_boxes']
         image = Image.fromarray(image)
         image.thumbnail((480, 280), Image.ANTIALIAS)
         img = ImageTk.PhotoImage(image)
-        feed = Label(GUI, image=img)
-        feed.grid(column=0, row=1, columnspan=4, rowspan=4)
+        feed.configure(image=img)
+        feed.image = img
         image = Image.open(path)
         width, height = image.size
         facelist = []
@@ -100,8 +103,11 @@ def process_selected():
             gender_pred = [gender_cat[x] for x in np.argmax(prediction[1],axis=-1)]
             update_live_feed(age_pred, gender_pred)
             update_total_feed(age_pred, gender_pred)
+        else:
+            update_live_feed([], [])
     else:
-        video_stop = False
+        video_stop_live = True
+        video_stop_processed = False
         process_live_stream()
 
     # need to implement video
@@ -110,8 +116,10 @@ def process_selected():
 
 # Delete selected file
 def delete_selected():
-    global video_stop
-    video_stop = True
+    global video_stop_processed
+    global video_stop_live
+    video_stop_processed = True
+    video_stop_live = True
     file = fileList.get(fileList.curselection())
     index = fileList.get(0, END).index(file)
     if index > 0:
@@ -122,28 +130,30 @@ def delete_selected():
 def show_image(event):
     global feed
     global img
-    global video_stop
-    feed.pack_forget()
+    global video_stop_processed
+    global video_stop_live
     w = event.widget
     index = int(w.curselection()[0])
     if index > 0:
-        video_stop = True
+        video_stop_processed = True
+        video_stop_live = True
         value = w.get(index)
         fileName.config(text=value)
         path = os.path.join('face_folder', value)
         image  = Image.open(path)
         image.thumbnail((480, 280), Image.ANTIALIAS)
         img = ImageTk.PhotoImage(image)
-        feed = Label(GUI, image=img)
+        feed.configure(image=img)
         feed.image = img
-        feed.grid(column=0, row=1, columnspan=4, rowspan=4)
     else:
-        video_stop = False
+        video_stop_processed = True
+        video_stop_live = False
         video_stream()
 
 # function that shows live video
 def video_stream():
-    global video_stop
+    global video_stop_live
+    global feed
     # Capture frame-by-frame
     ret, frame = cap.read()
     # Our operations on the frame come here
@@ -151,27 +161,31 @@ def video_stream():
     image = Image.fromarray(cv2image)
     image.thumbnail((480, 280), Image.ANTIALIAS)
     img = ImageTk.PhotoImage(image=image)
-    feed.imgtk = img
-    feed.configure(image=img)
-    if video_stop: 
-        feed.pack_forget()
+    if video_stop_live: 
+        feed.configure(image='')
+        feed.image = ''
     else: 
+        feed.configure(image=img)
+        feed.image = img
         feed.after(1, video_stream)
 
 # function that processes live video
 def process_live_stream():
-    global video_stop
+    global video_stop_processed
+    global feed
+    global img
     # Capture frame-by-frame
     ret, frame = cap.read()
     # Our operations on the frame come here
     cv2image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
     detections, image = process_image(cv2image)
-    bounding_boxes = detections['detection_boxes'][detections['detection_scores'] > 0.5]
+    bounding_boxes = detections['detection_boxes']
     image = Image.fromarray(image)
     image.thumbnail((480, 280), Image.ANTIALIAS)
     img = ImageTk.PhotoImage(image)
-    feed = Label(GUI, image=img)
-    feed.grid(column=0, row=1, columnspan=4, rowspan=4)
+    feed.configure(image=img)
+    feed.image = img  
+    image = Image.fromarray(cv2image)
     width, height = image.size
     facelist = []
     for i, img_box in enumerate(bounding_boxes):
@@ -185,14 +199,13 @@ def process_live_stream():
         gender_pred = [gender_cat[x] for x in np.argmax(prediction[1],axis=-1)]
         update_live_feed(age_pred, gender_pred)
         update_total_feed(age_pred, gender_pred)
-    image.thumbnail((480, 280), Image.ANTIALIAS)
-    img = ImageTk.PhotoImage(image=image)
-    feed.imgtk = img
-    feed.configure(image=img)
-    if video_stop: 
-        feed.pack_forget()
-    else: 
-        feed.after(10, process_live_stream)
+    else:
+        update_live_feed([], [])
+    if video_stop_processed: 
+        feed.configure(image='')
+        feed.image = ''
+    else:      
+        feed.after(1000, process_live_stream)
 
 # function that predict bounding boxes, age and gender classificatoin
 
@@ -262,8 +275,9 @@ def process_image(image_np):
     num_detections = int(detections.pop('num_detections'))
     detections = {key: value[0, :num_detections].numpy()
                   for key, value in detections.items()}
+    detections_index = min(len(detections['detection_boxes']), sum(detections['detection_scores'] > 0.7))
+    detections['detection_boxes']  = detections['detection_boxes'][:detections_index]
     detections['num_detections'] = num_detections
-
     # detection_classes should be ints.
     detections['detection_classes'] = detections['detection_classes'].astype(np.int64)
 
@@ -294,9 +308,10 @@ GUI.resizable(True, True)
 fileName = Label(text="Current File", width=61, font=("Arial Bold", 10))
 blankFeed = Label(width=69, height=20)
 
-img = None
-feed = Label(GUI, image=img)
-feed.image = img
+
+feed = Label(GUI, image='')
+feed.grid(column=0, row=1, columnspan=4, rowspan=4)
+feed.image = ''
 # List of files
 fileLabel = Label(text="File List", width=20, font=("Arial Bold", 10))
 fileList = Listbox(GUI, height=16, width=27)
@@ -320,7 +335,7 @@ totalFeedScrollbar = Scrollbar(GUI)
 # Pie Chart of total results
 ageChartLabel = Label(text="Age Pie Chart", width=30, font=("Arial Bold", 10))
 genderChartLabel = Label(text="Gender Pie Chart", width=30, font=("Arial Bold", 10))
-pieAge = Canvas(GUI, height=240, width=240, image = img)
+pieAge = Canvas(GUI, height=240, width=240)
 # pieAge.image = img
 pieGender = Canvas(GUI, height=240, width=240)
 # Ad suggestion
