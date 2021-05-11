@@ -15,6 +15,7 @@ import matplotlib.pyplot as plt
 cap = cv2.VideoCapture(0)
 video_stop_processed = True
 video_stop_live = True
+seconds = -1
 age_cat = ['0-2',
  '4-6',
  '8-12',
@@ -74,11 +75,25 @@ def process_selected():
     global gender_cat
     global video_stop_processed
     global video_stop_live
+    global cap
+    global seconds
     index = int(fileList.curselection()[0])
-    if index > 0:
-        video_stop_processed = True
+    file = fileList.get(fileList.curselection())
+    if index == 0:
         video_stop_live = True
-        file = fileList.get(fileList.curselection())
+        video_stop_processed = False
+        cap = cv2.VideoCapture(0)
+        process_live_stream()
+    elif file.endswith('.mp4'):
+        video_stop_live = True
+        video_stop_processed = False
+        path = os.path.join(os.getcwd(), 'face_folder', file)
+        cap = cv2.VideoCapture(path)
+        seconds = 0
+        process_live_stream()
+    else:
+        video_stop_processed = True
+        video_stop_live = True        
         fileName.config(text=file)    
         path = os.path.join(os.getcwd(), 'face_folder', file)
         image_np = np.array(Image.open(path))
@@ -105,10 +120,7 @@ def process_selected():
             update_total_feed(age_pred, gender_pred)
         else:
             update_live_feed([], [])
-    else:
-        video_stop_live = True
-        video_stop_processed = False
-        process_live_stream()
+
 
     # need to implement video
     # need to also run it through the model, then save the output to a local directory
@@ -132,12 +144,27 @@ def show_image(event):
     global img
     global video_stop_processed
     global video_stop_live
+    global cap
+    global seconds
     w = event.widget
     index = int(w.curselection()[0])
-    if index > 0:
+    value = w.get(index)
+    if index == 0:
+        video_stop_processed = True
+        video_stop_live = False
+        seconds = -1
+        cap = cv2.VideoCapture(0)
+        video_stream()
+    elif value.endswith('.mp4'):
+        video_stop_processed = True
+        video_stop_live = False
+        path = os.path.join('face_folder', value)
+        cap = cv2.VideoCapture(path)
+        seconds = 0
+        video_stream()   
+    else:
         video_stop_processed = True
         video_stop_live = True
-        value = w.get(index)
         fileName.config(text=value)
         path = os.path.join('face_folder', value)
         image  = Image.open(path)
@@ -145,67 +172,79 @@ def show_image(event):
         img = ImageTk.PhotoImage(image)
         feed.configure(image=img)
         feed.image = img
-    else:
-        video_stop_processed = True
-        video_stop_live = False
-        video_stream()
+
 
 # function that shows live video
 def video_stream():
     global video_stop_live
     global feed
+    global cap
+    global seconds
     # Capture frame-by-frame
     ret, frame = cap.read()
-    # Our operations on the frame come here
-    cv2image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGBA)
-    image = Image.fromarray(cv2image)
-    image.thumbnail((480, 280), Image.ANTIALIAS)
-    img = ImageTk.PhotoImage(image=image)
-    if video_stop_live: 
+    if seconds > -1:
+        seconds +=1
+        cap.set(cv2.CAP_PROP_POS_MSEC,seconds*1000)
+    if ret:
+        # Our operations on the frame come here
+        cv2image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGBA)
+        image = Image.fromarray(cv2image)
+        image.thumbnail((480, 280), Image.ANTIALIAS)
+        img = ImageTk.PhotoImage(image=image)
+    if video_stop_live or not ret: 
         feed.configure(image='')
         feed.image = ''
     else: 
         feed.configure(image=img)
         feed.image = img
-        feed.after(1, video_stream)
-
+        feed.after(100, video_stream)
 # function that processes live video
 def process_live_stream():
     global video_stop_processed
     global feed
     global img
+    global seconds
+    global cap
     # Capture frame-by-frame
     ret, frame = cap.read()
+    if seconds > -1:
+        seconds +=1
+        cap.set(cv2.CAP_PROP_POS_MSEC,seconds*1000)
     # Our operations on the frame come here
-    cv2image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-    detections, image = process_image(cv2image)
-    bounding_boxes = detections['detection_boxes']
-    image = Image.fromarray(image)
-    image.thumbnail((480, 280), Image.ANTIALIAS)
-    img = ImageTk.PhotoImage(image)
-    feed.configure(image=img)
-    feed.image = img  
-    image = Image.fromarray(cv2image)
-    width, height = image.size
-    facelist = []
-    for i, img_box in enumerate(bounding_boxes):
-        (ymin, xmin, ymax, xmax) = (img_box[0] * height, img_box[1] * width, img_box[2] * height, img_box[3] * width)
-        crop_img =  np.asarray(image.crop((max(int(xmin)-3,0), max(int(ymin)-3,0), min(int(xmax)+3,width), min(int(ymax)+3,height))).resize((160,160))) / 255.0
-        facelist.append(crop_img)
-    if facelist:
-        face_np = np.array(facelist)
-        prediction = model2.predict(face_np)
-        age_pred = [age_cat[x] for x in np.argmax(prediction[0],axis=-1)]
-        gender_pred = [gender_cat[x] for x in np.argmax(prediction[1],axis=-1)]
-        update_live_feed(age_pred, gender_pred)
-        update_total_feed(age_pred, gender_pred)
-    else:
-        update_live_feed([], [])
-    if video_stop_processed: 
+    if ret:
+        cv2image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        detections, image = process_image(cv2image)
+        bounding_boxes = detections['detection_boxes']
+        image = Image.fromarray(image)
+        image.thumbnail((480, 280), Image.ANTIALIAS)
+        img = ImageTk.PhotoImage(image)
+        feed.configure(image=img)
+        feed.image = img  
+        image = Image.fromarray(cv2image)
+        width, height = image.size
+        facelist = []
+        if (seconds % 2 == 0) or (seconds == -1):
+            for i, img_box in enumerate(bounding_boxes):
+                (ymin, xmin, ymax, xmax) = (img_box[0] * height, img_box[1] * width, img_box[2] * height, img_box[3] * width)
+                crop_img =  np.asarray(image.crop((max(int(xmin)-3,0), max(int(ymin)-3,0), min(int(xmax)+3,width), min(int(ymax)+3,height))).resize((160,160))) / 255.0
+                facelist.append(crop_img)
+            if facelist:
+                face_np = np.array(facelist)
+                prediction = model2.predict(face_np)
+                age_pred = [age_cat[x] for x in np.argmax(prediction[0],axis=-1)]
+                gender_pred = [gender_cat[x] for x in np.argmax(prediction[1],axis=-1)]
+                update_live_feed(age_pred, gender_pred)
+                update_total_feed(age_pred, gender_pred)
+            else:
+                update_live_feed([], [])
+    if video_stop_processed or not ret: 
         feed.configure(image='')
         feed.image = ''
-    else:      
-        feed.after(1000, process_live_stream)
+    else:
+        if seconds > -1:      
+            feed.after(100, process_live_stream)
+        else:
+            feed.after(1000, process_live_stream)
 
 # function that predict bounding boxes, age and gender classificatoin
 
