@@ -12,6 +12,7 @@ from categories import *
 import numpy as np
 from collections import Counter
 import matplotlib.pyplot as plt
+import pandas as pd
 cap = cv2.VideoCapture(0)
 video_stop_processed = True
 video_stop_live = True
@@ -25,6 +26,7 @@ age_cat = ['0-2',
  '48-53',
  '60-100']
 
+df = pd.read_csv('adtable.csv')
 gender_cat = ['Female', 'Male', 'Infant']
 
 age_total = dict(zip(age_cat, [0] * len(age_cat)))
@@ -44,6 +46,15 @@ detect_fn = model1.signatures['serving_default']
 model2 = tf.keras.models.load_model(os.path.join('models','facenet'))
 
 
+def reset_play():
+    global video_stop_processed
+    global video_stop_live
+    global feed
+    video_stop_processed = True
+    video_stop_live = True
+    
+
+
 # Custom Methods
 # Create new folder "face_folder" to store uploaded images
 def start_up():
@@ -55,10 +66,7 @@ def start_up():
 
 # Upload image to face_folder
 def upload_clicked():
-    global video_stop_processed
-    global video_stop_live
-    video_stop_processed = True
-    video_stop_live = True
+    reset_play()
     file = filedialog.askopenfilename(filetypes=(("files", "*.jpg"),
                                                  ("files", "*.png"),
                                                  ("files", "*.mp4")))
@@ -66,6 +74,37 @@ def upload_clicked():
     copy(file, curr_directory)
     fileList.insert(END, os.path.basename(file))
 
+def live_selected():
+    global video_stop_processed
+    global video_stop_live 
+    global cap
+    global seconds
+    video_stop_processed = True
+    if not video_stop_live:
+        reset_play()
+        feed.configure(image='')
+        feed.image = ''
+    else:        
+        video_stop_live = False
+        seconds = -1
+        cap = cv2.VideoCapture(0)
+        video_stream()
+
+def reset_selected():
+    global age_total
+    global gender_total
+    global total
+    reset_play()
+    age_total = dict(zip(age_cat, [0] * len(age_cat)))
+    gender_total = dict(zip(gender_cat, [0] * len(gender_cat)))
+    total = 0
+    liveFeed.delete('1.0', END)
+    totalFeed.delete('1.0', END)
+    ad.delete('1.0', END)
+    pieAge.configure(image='')
+    pieAge.image = ''
+    pieGender.configure(image='')
+    pieGender.image = ''
 
 # Process selected file to display image and name
 def process_selected():
@@ -77,14 +116,21 @@ def process_selected():
     global video_stop_live
     global cap
     global seconds
-    index = int(fileList.curselection()[0])
-    file = fileList.get(fileList.curselection())
-    if index == 0:
+    
+    if not video_stop_processed:
+        video_stop_processed = True
+        return
+    if not video_stop_live and seconds == -1:
         video_stop_live = True
         video_stop_processed = False
         cap = cv2.VideoCapture(0)
+        print('run live')
         process_live_stream()
-    elif file.endswith('.mp4'):
+        return
+    index = int(fileList.curselection()[0])
+    file = fileList.get(fileList.curselection())
+    if file.endswith('.mp4'):
+        print('run video')
         video_stop_live = True
         video_stop_processed = False
         path = os.path.join(os.getcwd(), 'face_folder', file)
@@ -100,7 +146,8 @@ def process_selected():
         detections, image = process_image(image_np)
         bounding_boxes = detections['detection_boxes']
         image = Image.fromarray(image)
-        image.thumbnail((480, 280), Image.ANTIALIAS)
+        feed.update()
+        image.thumbnail((int(feed.winfo_width()), int(feed.winfo_height())), Image.ANTIALIAS)
         img = ImageTk.PhotoImage(image)
         feed.configure(image=img)
         feed.image = img
@@ -118,8 +165,16 @@ def process_selected():
             gender_pred = [gender_cat[x] for x in np.argmax(prediction[1],axis=-1)]
             update_live_feed(age_pred, gender_pred)
             update_total_feed(age_pred, gender_pred)
+            create_age_chart(age_pred)
+            create_gender_chart(gender_pred)
+            update_ad(age_pred, gender_pred)
         else:
             update_live_feed([], [])
+            pieAge.configure(image='')
+            pieAge.image = ''
+            pieGender.configure(image='')
+            pieGender.image = ''
+            ad.delete('1.0', END)
 
 
     # need to implement video
@@ -128,47 +183,37 @@ def process_selected():
 
 # Delete selected file
 def delete_selected():
-    global video_stop_processed
-    global video_stop_live
-    video_stop_processed = True
-    video_stop_live = True
+    reset_play()
     file = fileList.get(fileList.curselection())
     index = fileList.get(0, END).index(file)
-    if index > 0:
-        fileList.delete(index)
-        os.remove(os.path.join('face_folder',  file))
+    fileList.delete(index)
+    os.remove(os.path.join('face_folder',  file))
+    feed.configure(image='')
+    feed.image = ''
 
 # function to show file when clicked
 def show_image(event):
     global feed
     global img
-    global video_stop_processed
-    global video_stop_live
     global cap
     global seconds
+    global video_stop_live
+    reset_play()
     w = event.widget
     index = int(w.curselection()[0])
     value = w.get(index)
-    if index == 0:
-        video_stop_processed = True
-        video_stop_live = False
-        seconds = -1
-        cap = cv2.VideoCapture(0)
-        video_stream()
-    elif value.endswith('.mp4'):
-        video_stop_processed = True
+    if value.endswith('.mp4'):
         video_stop_live = False
         path = os.path.join('face_folder', value)
         cap = cv2.VideoCapture(path)
         seconds = 0
         video_stream()   
     else:
-        video_stop_processed = True
-        video_stop_live = True
         fileName.config(text=value)
         path = os.path.join('face_folder', value)
         image  = Image.open(path)
-        image.thumbnail((480, 280), Image.ANTIALIAS)
+        feed.update()
+        image.thumbnail((int(feed.winfo_width()), int(feed.winfo_height())), Image.ANTIALIAS)
         img = ImageTk.PhotoImage(image)
         feed.configure(image=img)
         feed.image = img
@@ -189,7 +234,8 @@ def video_stream():
         # Our operations on the frame come here
         cv2image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGBA)
         image = Image.fromarray(cv2image)
-        image.thumbnail((480, 280), Image.ANTIALIAS)
+        feed.update()
+        image.thumbnail((int(feed.winfo_width()), int(feed.winfo_height())), Image.ANTIALIAS)
         img = ImageTk.PhotoImage(image=image)
     if video_stop_live or not ret: 
         feed.configure(image='')
@@ -198,6 +244,7 @@ def video_stream():
         feed.configure(image=img)
         feed.image = img
         feed.after(100, video_stream)
+
 # function that processes live video
 def process_live_stream():
     global video_stop_processed
@@ -216,7 +263,8 @@ def process_live_stream():
         detections, image = process_image(cv2image)
         bounding_boxes = detections['detection_boxes']
         image = Image.fromarray(image)
-        image.thumbnail((480, 280), Image.ANTIALIAS)
+        feed.update()
+        image.thumbnail((int(feed.winfo_width()), int(feed.winfo_height())), Image.ANTIALIAS)
         img = ImageTk.PhotoImage(image)
         feed.configure(image=img)
         feed.image = img  
@@ -235,8 +283,17 @@ def process_live_stream():
                 gender_pred = [gender_cat[x] for x in np.argmax(prediction[1],axis=-1)]
                 update_live_feed(age_pred, gender_pred)
                 update_total_feed(age_pred, gender_pred)
+                create_age_chart(age_pred)
+                create_gender_chart(gender_pred)
+                update_ad(age_pred, gender_pred)
             else:
                 update_live_feed([], [])
+                pieAge.configure(image='')
+                pieAge.image = ''
+                pieGender.configure(image='')
+                pieGender.image = ''
+                ad.delete('1.0', END)
+                
     if video_stop_processed or not ret: 
         feed.configure(image='')
         feed.image = ''
@@ -249,29 +306,50 @@ def process_live_stream():
 # function that predict bounding boxes, age and gender classificatoin
 
 
-
 # function that updates the age pie chart
 def create_age_chart(age_pred):
     global pieAge
-    global pieimg
-    pieAge.delete('all')
     age_dict =  {key: value/len(age_pred) for key, value in Counter(age_pred).items()}
     fig = plt.figure(figsize = [6,6])
     labels = age_dict.keys()
     sizes = age_dict.values()
-    plt.pie(sizes, labels=labels, autopct='%1.1f%%',
-            shadow=True, startangle=90)
+    plt.pie(sizes, 
+            labels=labels, 
+            autopct='%1.1f%%',
+            shadow=True,
+            startangle=90)
     fig.canvas.draw()
-    img = Image.frombytes('RGB', fig.canvas.get_width_height(),fig.canvas.tostring_rgb())
-    image.thumbnail((240, 240), Image.ANTIALIAS)
+    pieAge.update()
+    image = Image.frombytes('RGB', fig.canvas.get_width_height(),fig.canvas.tostring_rgb())
+    image.thumbnail((int(pieAge.winfo_width()), int(pieAge.winfo_height())), Image.ANTIALIAS)
     pieimg = ImageTk.PhotoImage(image)
-    pieAge.pack_forget()
-    pieAge = Label(GUI, image=pieimg)
+    pieAge.configure(image=pieimg)
     pieAge.image = pieimg
+    plt.close(fig)
+
+def create_gender_chart(gender_pred):
+    global pieGender
+    gender_dict =  {key: value/len(gender_pred) for key, value in Counter(gender_pred).items()}
+    fig = plt.figure(figsize = [6,6])
+    labels = gender_dict.keys()
+    sizes = gender_dict.values()
+    color_dict = {'Female':'r', 'Male':'b', 'Infant':'g'}
+    colors = [ color_dict[label] for label in labels] 
+    plt.pie(sizes, labels=labels, autopct='%1.1f%%',
+            shadow=True, colors = colors,startangle=90)
+    fig.canvas.draw()
+    pieGender.update()
+    image = Image.frombytes('RGB', fig.canvas.get_width_height(),fig.canvas.tostring_rgb())
+    image.thumbnail((int(pieGender.winfo_width()), int(pieGender.winfo_height())), Image.ANTIALIAS)
+    pieimg = ImageTk.PhotoImage(image)
+    pieGender.configure(image=pieimg)
+    pieGender.image = pieimg
+    plt.close(fig)
 # function that updates the gender pie chart
 # function to export to csv
 # function for suggested ads
 # function for updating live feed
+
 def update_live_feed(age_pred, gender_pred):
     global liveFeed
     liveFeed.delete('1.0', END)
@@ -298,6 +376,17 @@ def update_total_feed(age_pred, gender_pred):
     totalFeed.insert(END, "\n")
     for key, value in age_total.items():
         if value != 0: totalFeed.insert(END, "\n" + f"Age {key}: {value}") 
+
+def update_ad(age_pred, gender_pred):
+    global df
+    age_dict = Counter(age_pred)
+    age = max(age_dict, key=age_dict.get)
+    gender_dict = Counter(gender_pred)
+    gender = max(gender_dict, key=gender_dict.get)
+    ad.delete('1.0', END)
+    ad.config(state=NORMAL)
+    for i, row in df[(df.Age== age) & (df.Gender ==gender)].iterrows():
+        ad.insert(END, f"{row.Interests}" + "\n")
 
 # function for classification box
 def process_image(image_np):
@@ -337,162 +426,157 @@ def process_image(image_np):
 
 # Create a window
 start_up()
-GUI = Tk()
-GUI.title("Gender and Age Classification at Major Events for Valuable Demographic Trends and Statistics")
-width, height = GUI.winfo_screenwidth(), GUI.winfo_screenheight()
-GUI.geometry('%dx%d+0+0' % (width,height))
-GUI.resizable(True, True)
-
-# Image/Video feed
-fileName = Label(text="Current File", width=61, font=("Arial Bold", 10))
-blankFeed = Label(width=69, height=20)
+root = Tk()
+root.title("Gender and Age Classification at Major Events for Valuable Demographic Trends and Statistics")
+width, height = root.winfo_screenwidth(), root.winfo_screenheight()
+root.geometry('%dx%d+0+0' % (width,height))
+root.resizable(True, True)
+root.config(background='#606060')
 
 
-feed = Label(GUI, image='')
-feed.grid(column=0, row=1, columnspan=4, rowspan=4)
+# Layout of window (column, weight)
+root.columnconfigure(0, weight=2)
+root.columnconfigure(1, weight=2)
+root.columnconfigure(2, weight=1)
+root.columnconfigure(3, weight=1)
+root.rowconfigure(0, weight=5)
+root.rowconfigure(1, weight=1)
+root.rowconfigure(2, weight=4)
+
+
+# Screen frame
+frame_screen = Frame(root)
+frame_screen.grid(row = 0, column = 0, columnspan=2, sticky='nswe')
+frame_screen.rowconfigure(0, weight=0)
+frame_screen.rowconfigure(1, weight=1)
+frame_screen.columnconfigure(0, weight=1)
+# # Image/Video feed
+fileName = Label(frame_screen,text="Current File",font=("Arial Bold", 10))
+fileName.grid(column=0, row=0, sticky='nswe')
+feed = Label(frame_screen, image='', padx=1, pady=1)
+frame_screen.grid_propagate(0)
+feed.grid(column=0,row=1, sticky='nswe')
 feed.image = ''
+
+# Filelist frame
+frame_filelist = Frame(root)
+frame_filelist.grid(row = 0, column =2, sticky='nswe')
+frame_filelist.rowconfigure(0, weight=0)
+frame_filelist.rowconfigure(1, weight=1)
+frame_filelist.columnconfigure(0, weight=1)
+frame_filelist.grid_propagate(0)
 # List of files
-fileLabel = Label(text="File List", width=20, font=("Arial Bold", 10))
-fileList = Listbox(GUI, height=16, width=27)
-fileScrollbar = Scrollbar(GUI)
-# Upload/Delete/Export file classifications
-upload = Button(text="Upload", command=upload_clicked)
-process = Button(text="Process", command=process_selected)
-delete = Button(text="Delete", command=delete_selected)
-saveCSV = Button(text="Export as CSV")
-# Selected file classification
-fileResultsLabel = Label(text="Classifications", width=20, font=("Arial Bold", 10))
-fileResults = Text(GUI, height=10, width=23)
-fileResultsScrollbar = Scrollbar(GUI)
-# Current classification results
-liveFeedLabel = Label(text="Live Feed", width=30, font=("Arial Bold", 10))
-liveFeed = Text(GUI, height=10, width=32)
-liveFeedScrollbar = Scrollbar(GUI)
-totalFeedLabel = Label(text="Total Feed", width=30, font=("Arial Bold", 10))
-totalFeed = Text(GUI, height=10, width=32)
-totalFeedScrollbar = Scrollbar(GUI)
-# Pie Chart of total results
-ageChartLabel = Label(text="Age Pie Chart", width=30, font=("Arial Bold", 10))
-genderChartLabel = Label(text="Gender Pie Chart", width=30, font=("Arial Bold", 10))
-pieAge = Canvas(GUI, height=240, width=240)
-# pieAge.image = img
-pieGender = Canvas(GUI, height=240, width=240)
-# Ad suggestion
-adLabel = Label(text="Ad Suggestions", width=20, font=("Arial Bold", 10))
-ad = Text(GUI, height=19, width=23)
+fileLabel = Label(frame_filelist, text="File List", font=("Arial Bold", 10))
+fileLabel.grid(column=0, row=0)
+fileList = Listbox(frame_filelist, height = 0, width=5)
+fileList.grid(column=0, row=1, sticky='nswe')
+fileScrollbar = Scrollbar(frame_filelist)
+fileScrollbar.grid(column=1, row=1, sticky='nse')
+
+# Livefeed frame
+frame_livefeed = Frame(root)
+frame_livefeed.grid(row = 1, column =0,rowspan=2,sticky='nswe')
+frame_livefeed.rowconfigure(0, weight=0)
+frame_livefeed.rowconfigure(1, weight=1)
+frame_livefeed.columnconfigure(0, weight=1)
+# Livefeed
+liveFeedLabel = Label(frame_livefeed, text="Live Feed", font=("Arial Bold", 10))
+liveFeedLabel.grid(column=0, row=0, sticky='nswe')
+liveFeed = Text(frame_livefeed, height= 0, width=0)
+liveFeed.grid(column=0, row=1, sticky='nswe')
+liveFeedScrollbar = Scrollbar(frame_livefeed)
+liveFeedScrollbar.grid(column=1, row=1, sticky='nse')
 
 
-# Add components
-# Image/Video feed
-fileName.grid(column=0, row=0, columnspan=4)
-blankFeed.grid(column=0, row=1, columnspan=4, rowspan=4)
-# List of files
-fileLabel.grid(column=4, row=0, columnspan=4)
-fileList.grid(column=4, row=1, columnspan=4, sticky='e')
-fileScrollbar.grid(column=7, row=1, sticky='nsw')
-fileList.config(yscrollcommand=fileScrollbar.set)
-fileScrollbar.config(command=fileList.yview)
-# Upload/Delete/Export file classifications
-upload.grid(column=4, row=3)
-process.grid(column=5, row=3)
-delete.grid(column=6, row=3)
-saveCSV.grid(column=4, row=4, columnspan=3)
-# Selected file classification
-fileResultsLabel.grid(column=4, row=5, columnspan=4)
-fileResults.grid(column=4, row=6, columnspan=4, sticky='e')
-fileResultsScrollbar.grid(column=7, row=6, sticky='nsw')
-fileResults.config(yscrollcommand=fileResultsScrollbar.set)
-fileResultsScrollbar.config(command=fileResults.yview)
-# Present classification results
-liveFeedLabel.grid(column=0, row=5, columnspan=2)
-liveFeed.grid(column=0, row=6, sticky='e')
-liveFeedScrollbar.grid(column=1, row=6, sticky='nsw')
-liveFeed.config(yscrollcommand=liveFeedScrollbar.set)
-liveFeedScrollbar.config(command=liveFeed.yview)
-totalFeedLabel.grid(column=2, row=5, columnspan=2)
-totalFeed.grid(column=2, row=6, sticky='e')
-totalFeedScrollbar.grid(column=3, row=6, sticky='nsw')
-totalFeed.config(yscrollcommand=totalFeedScrollbar.set)
-totalFeedScrollbar.config(command=totalFeed.yview)
-# Pie Chart of total results
-ageChartLabel.grid(column=0, row=7, columnspan=2)
-genderChartLabel.grid(column=2, row=7, columnspan=2)
-pieAge.grid(column=0, row=8, columnspan=2)
-pieGender.grid(column=2, row=8, columnspan=2)
-# Ad suggestion
-adLabel.grid(column=4, row=7, columnspan=4)
-ad.grid(column=4, row=8, columnspan=4, rowspan=2)
+# totalfeed frame
+frame_totalfeed = Frame(root)
+frame_totalfeed.grid(row = 1, column =1, rowspan=2, sticky='nswe')
+frame_totalfeed.rowconfigure(0, weight=0)
+frame_totalfeed.rowconfigure(1, weight=1)
+frame_totalfeed.columnconfigure(0, weight=1)
+
+# totalfeed
+totalFeedLabel = Label(frame_totalfeed, text="Total Feed", font=("Arial Bold", 10))
+totalFeedLabel.grid(column=0, row=0, sticky='nswe')
+totalFeed = Text(frame_totalfeed, height= 0, width=0)
+totalFeed.grid(column=0, row=1, sticky='nswe')
+totalFeedScrollbar = Scrollbar(frame_totalfeed)
+totalFeedScrollbar.grid(column=1, row=1, sticky='nsw')
+
+# Age Pie Chart frame
+frame_agepiechart = Frame(root)
+frame_agepiechart.grid(row = 2, column =2,sticky='nswe')
+frame_agepiechart.rowconfigure(0, weight=0)
+frame_agepiechart.rowconfigure(1, weight=1)
+frame_agepiechart.columnconfigure(0, weight=1)
+frame_agepiechart.grid_propagate(0)
+# Age Pie Chart 
+ageChartLabel = Label(frame_agepiechart, text="Age Pie Chart", font=("Arial Bold", 10))
+ageChartLabel.grid(column=0, row=0, sticky='nswe')
+pieAge = Label(frame_agepiechart, image='')
+pieAge.grid(column=0, row=1, sticky='nswe')
+pieAge.image = ''
+
+# Age Pie Chart frame
+frame_genderpiechart = Frame(root)
+frame_genderpiechart.grid(row = 2, column =3,sticky='nswe')
+frame_genderpiechart.rowconfigure(0, weight=0)
+frame_genderpiechart.rowconfigure(1, weight=1)
+frame_genderpiechart.columnconfigure(0, weight=1)
+frame_genderpiechart.grid_propagate(0)
+# Gender Pie Chart 
+
+genderChartLabel = Label(frame_genderpiechart, text="Gender Pie Chart", font=("Arial Bold", 10))
+genderChartLabel.grid(column=0, row=0, sticky='nswe')
+pieGender = Label(frame_genderpiechart, image='')
+pieGender.grid(column=0, row=1, sticky='nswe')
+pieGender.image = ''
 
 
-# Changing color of components
-GUI.config(background='#606060')
-fileName.config(bg='#E0E0E0')
-blankFeed.config(background='#f0f0f0')
-fileLabel.config(background='#E0E0E0')
-fileList.config(background='white')
-upload.config(background='#909090')
-process.config(background='#909090')
-delete.config(background='#909090')
-saveCSV.config(background='#909090')
-fileResults.config(background='white')
-liveFeedLabel.config(background='#E0E0E0')
-liveFeed.config(background='white')
-totalFeedLabel.config(background='#E0E0E0')
-totalFeed.config(background='white')
-ageChartLabel.config(background='#E0E0E0')
-genderChartLabel.config(background='#E0E0E0')
-pieAge.config(background='white')
-pieGender.config(background='white')
-adLabel.config(background='#E0E0E0')
-ad.config(background='white')
+# Ad list Frame
+frame_adlist = Frame(root)
+frame_adlist.grid(row = 0, column =3, sticky='nswe')
+frame_adlist.rowconfigure(0, weight=0)
+frame_adlist.rowconfigure(1, weight=1)
+frame_adlist.columnconfigure(0, weight=1)
+frame_adlist.grid_propagate(0)
+# List of ads
+adLabel = Label(frame_adlist, text="Ad suggestion", font=("Arial Bold", 10))
+adLabel.grid(column=0, row=0)
+ad = Text(frame_adlist, height=5, width=0)
+ad.grid(column=0, row=1, sticky='nswe')
 
 
-# DEBUG
-liveFeed.insert(END, "Faces detected: 8" + "\n")
-liveFeed.insert(END, "\n" + "Male: 25-32")
-liveFeed.insert(END, "\n" + "Female: 25-32")
-liveFeed.insert(END, "\n" + "Male: 38-43")
-liveFeed.insert(END, "\n" + "Male: 25-32")
-liveFeed.insert(END, "\n" + "Female: 25-32")
-liveFeed.insert(END, "\n" + "Female: 38-43")
-liveFeed.insert(END, "\n" + "Male: 25-32")
-liveFeed.insert(END, "\n" + "Female: 25-32")
+# Buttons Frame
+frame_buttons = Frame(root)
+frame_buttons.grid(row = 1, column =2, sticky='nswe')
+frame_buttons.rowconfigure(0, weight=1)
+frame_buttons.rowconfigure(1, weight=1)
+frame_buttons.rowconfigure(2, weight=1)
+frame_buttons.columnconfigure(0, weight=1) 
+frame_buttons.columnconfigure(1, weight=1) 
+# add buttons
 
-totalFeed.insert(END, "Total people: 24" + "\n")
-totalFeed.insert(END, "\n" + "Male: 16")
-totalFeed.insert(END, "\n" + "Female: 8" + "\n")
-totalFeed.insert(END, "\n" + "Age 15-20: 4")
-totalFeed.insert(END, "\n" + "Age 25-32: 14")
-totalFeed.insert(END, "\n" + "Age 38-43: 6")
+upload = Button(frame_buttons, text="Upload", command=upload_clicked, font=("Arial Bold", 8))
+upload.grid(column=0, row=0,sticky='nswe')
+delete = Button(frame_buttons, text="Delete", command=delete_selected, font=("Arial Bold", 8))
+delete.grid(column=1, row=0,sticky='nswe')
+process = Button(frame_buttons, text="Process", command=process_selected, font=("Arial Bold", 8))
+process.grid(column=0, row=1,sticky='nswe')
+live = Button(frame_buttons, text="Live", command=live_selected, font=("Arial Bold", 8))
+live.grid(column=1, row=1,sticky='nswe')
+reset = Button(frame_buttons, text="reset", command=reset_selected, font=("Arial Bold", 8))
+reset.grid(column=0, row=2,sticky='nswe')
+export = Button(frame_buttons, text="Exit", command= root.destroy, font=("Arial Bold", 8))
+export.grid(column=1, row=2,sticky='nswe')
 
-# data = [['15-20', 0.17, 'yellow'], ['25-32', 0.58, 'green'], ['38-43', 0.25, 'purple']]
-# p = 0
-# for i in data:
-#     angle = i[1] * 360
-#     pieAge.create_arc(220, 220, 20, 20, start=p, extent=angle, fill=i[2])
-#     p += angle
+# blank list Frame
+frame_adlist = Frame(root)
+frame_adlist.grid(row = 1, column =3, sticky='nswe')
 
-# data = [['Male', 0.67, 'blue'], ['Female', 0.33, 'red']]
-# p = 0
-# for i in data:
-#     angle = i[1] * 360
-#     pieGender.create_arc(220, 220, 20, 20, start=p, extent=angle, fill=i[2])
-#     p += angle
-
-ad.insert(END, "Suggested Ads:" + "\n\n")
-ad.insert(END, "Sports" + "\n")
-ad.insert(END, "Stationary" + "\n")
-ad.insert(END, "Computers" + "\n")
-
-fileResults.insert(END, "Classifications" + "\n\n")
-fileResults.insert(END, "Female: 25-32" + "\n")
-fileResults.insert(END, "Male: 25-32" + "\n")
-fileResults.insert(END, "Female: 25-32" + "\n")
-
-
-fileList.insert(END, 'Live Streaming')
-# event when clicking filenames
+# fileList.insert(END, 'Live Streaming')
+# # event when clicking filenames
 fileList.bind("<<ListboxSelect>>", show_image)
 
 # Mainloop
-GUI.mainloop()
+root.mainloop()
