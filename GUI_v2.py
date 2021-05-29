@@ -441,9 +441,9 @@ root.columnconfigure(2, weight=3)
 root.columnconfigure(3, weight=3)
 root.columnconfigure(4, weight=2)
 root.columnconfigure(5, weight=2)
-root.rowconfigure(0, weight=6)
+root.rowconfigure(0, weight=8)
 root.rowconfigure(1, weight=1)
-root.rowconfigure(2, weight=2)
+root.rowconfigure(2, weight=1)
 
 
 # Screen frame
