@@ -140,7 +140,7 @@ def process_selected():
     else:
         video_stop_processed = True
         video_stop_live = True        
-        fileName.config(text=file)    
+        # fileName.config(text=file)    
         path = os.path.join(os.getcwd(), 'face_folder', file)
         image_np = np.array(Image.open(path))
         detections, image = process_image(image_np)
@@ -209,7 +209,7 @@ def show_image(event):
         seconds = 0
         video_stream()   
     else:
-        fileName.config(text=value)
+        # fileName.config(text=value)
         path = os.path.join('face_folder', value)
         image  = Image.open(path)
         feed.update()
@@ -427,31 +427,34 @@ def process_image(image_np):
 # Create a window
 start_up()
 root = Tk()
-root.title("Gender and Age Classification at Major Events for Valuable Demographic Trends and Statistics")
+root.title("Gender and Age Classification Model")
 width, height = root.winfo_screenwidth(), root.winfo_screenheight()
 root.geometry('%dx%d+0+0' % (width,height))
 root.resizable(True, True)
 root.config(background='#606060')
-
+root.iconbitmap(os.path.join('icons', 'uts.ico'))
 
 # Layout of window (column, weight)
 root.columnconfigure(0, weight=2)
 root.columnconfigure(1, weight=2)
-root.columnconfigure(2, weight=1)
-root.columnconfigure(3, weight=1)
-root.rowconfigure(0, weight=5)
+root.columnconfigure(2, weight=3)
+root.columnconfigure(3, weight=3)
+root.columnconfigure(4, weight=2)
+root.columnconfigure(5, weight=2)
+root.rowconfigure(0, weight=6)
 root.rowconfigure(1, weight=1)
-root.rowconfigure(2, weight=4)
+root.rowconfigure(2, weight=2)
 
 
 # Screen frame
 frame_screen = Frame(root)
-frame_screen.grid(row = 0, column = 0, columnspan=2, sticky='nswe')
+frame_screen.grid(row = 0, column = 0, columnspan=4, sticky='nswe')
 frame_screen.rowconfigure(0, weight=0)
 frame_screen.rowconfigure(1, weight=1)
 frame_screen.columnconfigure(0, weight=1)
+
 # # Image/Video feed
-fileName = Label(frame_screen,text="Current File",font=("Arial Bold", 10))
+fileName = Label(frame_screen,text="",font=("Arial Bold", 12))
 fileName.grid(column=0, row=0, sticky='nswe')
 feed = Label(frame_screen, image='', padx=1, pady=1)
 frame_screen.grid_propagate(0)
@@ -460,15 +463,16 @@ feed.image = ''
 
 # Filelist frame
 frame_filelist = Frame(root)
-frame_filelist.grid(row = 0, column =2, sticky='nswe')
+frame_filelist.grid(row = 0, column =4, sticky='nswe')
 frame_filelist.rowconfigure(0, weight=0)
 frame_filelist.rowconfigure(1, weight=1)
 frame_filelist.columnconfigure(0, weight=1)
 frame_filelist.grid_propagate(0)
+
 # List of files
-fileLabel = Label(frame_filelist, text="File List", font=("Arial Bold", 10))
+fileLabel = Label(frame_filelist, text="File List", font=("Arial Bold", 12))
 fileLabel.grid(column=0, row=0)
-fileList = Listbox(frame_filelist, height = 0, width=5)
+fileList = Listbox(frame_filelist, height = 0, width=5, font=("Arial Bold", 12))
 fileList.grid(column=0, row=1, sticky='nswe')
 fileScrollbar = Scrollbar(frame_filelist)
 fileScrollbar.grid(column=1, row=1, sticky='nse')
@@ -479,10 +483,11 @@ frame_livefeed.grid(row = 1, column =0,rowspan=2,sticky='nswe')
 frame_livefeed.rowconfigure(0, weight=0)
 frame_livefeed.rowconfigure(1, weight=1)
 frame_livefeed.columnconfigure(0, weight=1)
+
 # Livefeed
-liveFeedLabel = Label(frame_livefeed, text="Live Feed", font=("Arial Bold", 10))
+liveFeedLabel = Label(frame_livefeed, text="Live Feed", font=("Arial Bold", 12))
 liveFeedLabel.grid(column=0, row=0, sticky='nswe')
-liveFeed = Text(frame_livefeed, height= 0, width=0)
+liveFeed = Text(frame_livefeed, height= 0, width=0, font=("Helvetica", 15))
 liveFeed.grid(column=0, row=1, sticky='nswe')
 liveFeedScrollbar = Scrollbar(frame_livefeed)
 liveFeedScrollbar.grid(column=1, row=1, sticky='nse')
@@ -496,83 +501,94 @@ frame_totalfeed.rowconfigure(1, weight=1)
 frame_totalfeed.columnconfigure(0, weight=1)
 
 # totalfeed
-totalFeedLabel = Label(frame_totalfeed, text="Total Feed", font=("Arial Bold", 10))
+totalFeedLabel = Label(frame_totalfeed, text="Total Feed", font=("Arial Bold", 12))
 totalFeedLabel.grid(column=0, row=0, sticky='nswe')
-totalFeed = Text(frame_totalfeed, height= 0, width=0)
+totalFeed = Text(frame_totalfeed, height= 0, width=0, font=("Helvetica", 15))
 totalFeed.grid(column=0, row=1, sticky='nswe')
 totalFeedScrollbar = Scrollbar(frame_totalfeed)
 totalFeedScrollbar.grid(column=1, row=1, sticky='nsw')
 
 # Age Pie Chart frame
 frame_agepiechart = Frame(root)
-frame_agepiechart.grid(row = 2, column =2,sticky='nswe')
+frame_agepiechart.grid(row = 1, column =2, rowspan= 2,sticky='nswe')
 frame_agepiechart.rowconfigure(0, weight=0)
 frame_agepiechart.rowconfigure(1, weight=1)
 frame_agepiechart.columnconfigure(0, weight=1)
 frame_agepiechart.grid_propagate(0)
+
 # Age Pie Chart 
-ageChartLabel = Label(frame_agepiechart, text="Age Pie Chart", font=("Arial Bold", 10))
+ageChartLabel = Label(frame_agepiechart, text="Age Pie Chart", font=("Arial Bold", 12))
 ageChartLabel.grid(column=0, row=0, sticky='nswe')
-pieAge = Label(frame_agepiechart, image='')
+pieAge = Label(frame_agepiechart, image='', anchor= 'n')
 pieAge.grid(column=0, row=1, sticky='nswe')
 pieAge.image = ''
 
-# Age Pie Chart frame
+# gender Pie Chart frame
 frame_genderpiechart = Frame(root)
-frame_genderpiechart.grid(row = 2, column =3,sticky='nswe')
+frame_genderpiechart.grid(row = 1, column =3, rowspan = 2, sticky='nswe')
 frame_genderpiechart.rowconfigure(0, weight=0)
 frame_genderpiechart.rowconfigure(1, weight=1)
 frame_genderpiechart.columnconfigure(0, weight=1)
 frame_genderpiechart.grid_propagate(0)
-# Gender Pie Chart 
 
-genderChartLabel = Label(frame_genderpiechart, text="Gender Pie Chart", font=("Arial Bold", 10))
+# Gender Pie Chart 
+genderChartLabel = Label(frame_genderpiechart, text="Gender Pie Chart", font=("Arial Bold", 12))
 genderChartLabel.grid(column=0, row=0, sticky='nswe')
-pieGender = Label(frame_genderpiechart, image='')
+pieGender = Label(frame_genderpiechart, image='', anchor= 'n')
 pieGender.grid(column=0, row=1, sticky='nswe')
 pieGender.image = ''
 
 
 # Ad list Frame
 frame_adlist = Frame(root)
-frame_adlist.grid(row = 0, column =3, sticky='nswe')
+frame_adlist.grid(row = 0, column =5, sticky='nswe')
 frame_adlist.rowconfigure(0, weight=0)
 frame_adlist.rowconfigure(1, weight=1)
 frame_adlist.columnconfigure(0, weight=1)
 frame_adlist.grid_propagate(0)
 # List of ads
-adLabel = Label(frame_adlist, text="Ad suggestion", font=("Arial Bold", 10))
+adLabel = Label(frame_adlist, text="Ad suggestion", font=("Arial Bold", 12))
 adLabel.grid(column=0, row=0)
-ad = Text(frame_adlist, height=5, width=0)
+ad = Text(frame_adlist, height=5, width=0, font=("Helvetica", 15))
 ad.grid(column=0, row=1, sticky='nswe')
+
 
 
 # Buttons Frame
 frame_buttons = Frame(root)
-frame_buttons.grid(row = 1, column =2, sticky='nswe')
+frame_buttons.grid(row = 1, column =4, columnspan=2, sticky='nswe')
 frame_buttons.rowconfigure(0, weight=1)
 frame_buttons.rowconfigure(1, weight=1)
 frame_buttons.rowconfigure(2, weight=1)
 frame_buttons.columnconfigure(0, weight=1) 
 frame_buttons.columnconfigure(1, weight=1) 
+
+# button icons
+button_size = int(20)
+upload_icon = PhotoImage(file = os.path.join('icons', 'upload.png')).subsample(12, 12)
+delete_icon = PhotoImage(file = os.path.join('icons', 'delete.png')).subsample(12, 12)
+process_icon = PhotoImage(file =os.path.join('icons', 'process.png')).subsample(12, 12)
+live_icon = PhotoImage(file = os.path.join('icons', 'live.png')).subsample(12, 12)
+reset_icon = PhotoImage(file =os.path.join('icons', 'reset.png')).subsample(12, 12)
+exit_icon = PhotoImage(file = os.path.join('icons', 'exit.png')).subsample(12, 12)
+
 # add buttons
-
-upload = Button(frame_buttons, text="Upload", command=upload_clicked, font=("Arial Bold", 8))
+upload = Button(frame_buttons, image = upload_icon,text="     Upload", compound="left", command=upload_clicked, font=("Arial Bold", 10))
 upload.grid(column=0, row=0,sticky='nswe')
-delete = Button(frame_buttons, text="Delete", command=delete_selected, font=("Arial Bold", 8))
+delete = Button(frame_buttons, image = delete_icon, text="     Delete", compound="left", command=delete_selected, font=("Arial Bold", 10))
 delete.grid(column=1, row=0,sticky='nswe')
-process = Button(frame_buttons, text="Process", command=process_selected, font=("Arial Bold", 8))
+process = Button(frame_buttons, image=process_icon, text="     Process", compound="left", command=process_selected, font=("Arial Bold", 10))
 process.grid(column=0, row=1,sticky='nswe')
-live = Button(frame_buttons, text="Live", command=live_selected, font=("Arial Bold", 8))
+live = Button(frame_buttons, image=live_icon,text="     Live", compound="left", command=live_selected, font=("Arial Bold", 10))
 live.grid(column=1, row=1,sticky='nswe')
-reset = Button(frame_buttons, text="reset", command=reset_selected, font=("Arial Bold", 8))
+reset = Button(frame_buttons, image=reset_icon,text="     Reset", compound="left", command=reset_selected, font=("Arial Bold", 10))
 reset.grid(column=0, row=2,sticky='nswe')
-export = Button(frame_buttons, text="Exit", command= root.destroy, font=("Arial Bold", 8))
-export.grid(column=1, row=2,sticky='nswe')
+exit = Button(frame_buttons, image=exit_icon,text="     Exit", compound="left", command= root.destroy, font=("Arial Bold", 10))
+exit.grid(column=1, row=2,sticky='nswe')
 
-# blank list Frame
-frame_adlist = Frame(root)
-frame_adlist.grid(row = 1, column =3, sticky='nswe')
+# about  Frame
+about_blank = Label(root, text="Group 40 - Binary Numbers\nGender and Age Classification\nfor Demographic Trends and Statistics\nWalden Ip\nJohnathan Pham\nYunseok Oh",font=("Arial", 15), justify = 'left', anchor='nw')
+about_blank.grid(row = 2, column =4, columnspan = 2, sticky='nswe')
 
 # fileList.insert(END, 'Live Streaming')
 # # event when clicking filenames
